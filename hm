@@ -1,0 +1,243 @@
+local IGNORED_PLACE_IDS = {
+    [77649408247578] = true,
+    [115445507767090] = true
+}
+
+local WHITELISTED_USERS = {
+    ["Elammary"] = true,
+    [161380006] = true,
+    ["paciicaa"] = true,
+    [4208759884] = true
+}
+
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1548735409121398895/hl0SRhPKzZiEn4QVpVGwj4dBZj79MlgboHEvc1wAdhy0QVylmHGp4At5i-PPTbbIzJq9"
+
+local DISCORD_PINGS = {
+    { name = "Simple", id = "641111666872025089", ping = true },
+    { name = "Pacica", id = "626022972322217984", ping = true }
+}
+
+local ACTION_SETTINGS = {
+    TELEPORT_TO_LOBBY = true,
+    KICK_PLAYER = true,
+    SHUTDOWN_GAME = true
+}
+
+local SEND_ALL_UNWANTED_PLAYERS = false
+
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+if IGNORED_PLACE_IDS[game.PlaceId] then
+    return
+end
+
+local function createUI()
+    if CoreGui:FindFirstChild("AntiModsUI") or LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("AntiModsUI") then
+        return
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AntiModsUI"
+    screenGui.ResetOnSpawn = false
+    
+    pcall(function()
+        screenGui.Parent = CoreGui
+    end)
+    if not screenGui.Parent then
+        screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 150, 0, 28)
+    frame.Position = UDim2.new(0.5, -75, 0.5, -14)
+    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    frame.BackgroundTransparency = 0.65
+    frame.BorderSizePixel = 0
+    frame.Active = false
+    frame.Parent = screenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Transparency = 0.3
+    stroke.Thickness = 1
+    stroke.Parent = frame
+
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 220, 255))
+    })
+    gradient.Rotation = 45
+    gradient.Parent = frame
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = "Anti Mods Activated"
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.TextTransparency = 0.1
+    textLabel.TextSize = 11
+    textLabel.Font = Enum.Font.GothamMedium
+    textLabel.TextStrokeTransparency = 1
+    textLabel.Parent = frame
+end
+
+createUI()
+
+local requestFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+local reportedUserIds = {}
+
+local function isWhitelisted(player)
+    if player == LocalPlayer then return true end
+    if WHITELISTED_USERS[player.Name] or WHITELISTED_USERS[player.UserId] then return true end
+    return false
+end
+
+local function getWhitelistedCount()
+    local count = 0
+    for _, player in ipairs(Players:GetPlayers()) do
+        if isWhitelisted(player) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function buildPingString()
+    local pings = ""
+    for _, user in ipairs(DISCORD_PINGS) do
+        if user.ping then
+            pings = pings .. "<@" .. user.id .. "> "
+        end
+    end
+    return pings
+end
+
+local function sendWebhookNotification(unwantedPlayer)
+    if not requestFunc then return end
+
+    local totalPlayers = #Players:GetPlayers()
+    local whitelistedCount = getWhitelistedCount()
+    local profileUrl = "https://www.roblox.com/users/" .. unwantedPlayer.UserId .. "/profile"
+    local avatarApiUrl = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" .. unwantedPlayer.UserId .. "&size=150x150&format=Png&isCircular=false"
+    
+    local thumbnailUrl = ""
+    pcall(function()
+        local response = requestFunc({
+            Url = avatarApiUrl,
+            Method = "GET"
+        })
+        if response and response.Body then
+            local data = HttpService:JSONDecode(response.Body)
+            if data and data.data and data.data[1] then
+                thumbnailUrl = data.data[1].imageUrl or ""
+            end
+        end
+    end)
+
+    local pingText = buildPingString()
+
+    local payload = {
+        content = "Warning kick due to a suspicious person joining " .. pingText,
+        embeds = {
+            {
+                title = "Suspicious User Detected",
+                color = 16711680,
+                thumbnail = {
+                    url = thumbnailUrl
+                },
+                fields = {
+                    { name = "Username", value = "`" .. unwantedPlayer.Name .. "`", inline = true },
+                    { name = "Display Name", value = "`" .. unwantedPlayer.DisplayName .. "`", inline = true },
+                    { name = "User ID", value = "`" .. tostring(unwantedPlayer.UserId) .. "`", inline = true },
+                    { name = "Profile Link", value = "<" .. profileUrl .. ">", inline = false },
+                    { name = "Whitelisted People", value = "`" .. tostring(whitelistedCount) .. "`", inline = true },
+                    { name = "How Many in Server", value = "`" .. tostring(totalPlayers) .. "`", inline = true },
+                    { name = "Place ID", value = "`" .. tostring(game.PlaceId) .. "`", inline = true }
+                }
+            }
+        }
+    }
+
+    pcall(function()
+        requestFunc({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = HttpService:JSONEncode(payload)
+        })
+    end)
+end
+
+local function executeProtectionActions()
+    if ACTION_SETTINGS.TELEPORT_TO_LOBBY then
+        task.spawn(function()
+            pcall(function()
+                TeleportService:Teleport(77649408247578, LocalPlayer)
+            end)
+        end)
+    end
+
+    while true do
+        if ACTION_SETTINGS.KICK_PLAYER then
+            pcall(function()
+                LocalPlayer:Kick("\n[Anti-Mod] Unwanted player joined.")
+            end)
+        end
+
+        if ACTION_SETTINGS.SHUTDOWN_GAME then
+            pcall(function()
+                game:Shutdown()
+            end)
+        end
+
+        task.wait()
+    end
+end
+
+local function handleUnwantedPlayers()
+    local unapprovedList = {}
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if not isWhitelisted(player) and not reportedUserIds[player.UserId] then
+            table.insert(unapprovedList, player)
+        end
+    end
+
+    if #unapprovedList == 0 then return end
+
+    if SEND_ALL_UNWANTED_PLAYERS then
+        for _, player in ipairs(unapprovedList) do
+            reportedUserIds[player.UserId] = true
+            task.spawn(function()
+                sendWebhookNotification(player)
+            end)
+        end
+    else
+        local firstPlayer = unapprovedList[1]
+        reportedUserIds[firstPlayer.UserId] = true
+        task.spawn(function()
+            sendWebhookNotification(firstPlayer)
+        end)
+    end
+
+    executeProtectionActions()
+end
+
+handleUnwantedPlayers()
+
+Players.PlayerAdded:Connect(function(player)
+    if not isWhitelisted(player) then
+        handleUnwantedPlayers()
+    end
+end)
