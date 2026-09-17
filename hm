@@ -6,6 +6,8 @@ local IGNORED_PLACE_IDS = {
 local WHITELISTED_USERS = {
     ["Elammary"] = true,
     [161380006] = true,
+    ["Osiocua935"] = true,
+    [10822104509] = true,
     ["paciicaa"] = true,
     [4208759884] = true
 }
