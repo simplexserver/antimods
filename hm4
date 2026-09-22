@@ -98,7 +98,7 @@ local requestFunc = (syn and syn.request) or (http and http.request) or http_req
 local reportedUserIds = {}
 
 local function isWhitelisted(player)
-    if player == LocalPlayer then return true end
+    if player == LocalPlayer or player.UserId == LocalPlayer.UserId then return true end
     if WHITELISTED_USERS[player.Name] or WHITELISTED_USERS[player.UserId] then return true end
     return false
 end
